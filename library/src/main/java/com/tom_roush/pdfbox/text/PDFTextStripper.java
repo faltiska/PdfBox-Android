@@ -28,7 +28,6 @@ import java.io.Writer;
 import java.text.Bidi;
 import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -48,6 +47,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPageTree;
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle;
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import com.tom_roush.pdfbox.pdmodel.interactive.pagenavigation.PDThreadBead;
+import com.tom_roush.pdfbox.util.IterativeMergeSort;
 import com.tom_roush.pdfbox.util.QuickSort;
 
 /**
@@ -62,83 +62,8 @@ import com.tom_roush.pdfbox.util.QuickSort;
  */
 public class PDFTextStripper extends LegacyPDFStreamEngine
 {
-    private static float defaultIndentThreshold = 2.0f;
-    private static float defaultDropThreshold = 2.5f;
-    private static final boolean useCustomQuickSort;
-
-    // enable the ability to set the default indent/drop thresholds
-    // with -D system properties:
-    // pdftextstripper.indent
-    // pdftextstripper.drop
-    static
-    {
-        String strDrop = null, strIndent = null;
-        try
-        {
-            String className = PDFTextStripper.class.getSimpleName().toLowerCase();
-            String prop = className + ".indent";
-            strIndent = System.getProperty(prop);
-            prop = className + ".drop";
-            strDrop = System.getProperty(prop);
-        }
-        catch (SecurityException e)
-        {
-            // PDFBOX-1946 when run in an applet
-            // ignore and use default
-        }
-        if (strIndent != null && strIndent.length() > 0)
-        {
-            try
-            {
-                defaultIndentThreshold = Float.parseFloat(strIndent);
-            }
-            catch (NumberFormatException nfe)
-            {
-                // ignore and use default
-            }
-        }
-        if (strDrop != null && strDrop.length() > 0)
-        {
-            try
-            {
-                defaultDropThreshold = Float.parseFloat(strDrop);
-            }
-            catch (NumberFormatException nfe)
-            {
-                // ignore and use default
-            }
-        }
-    }
-
-    static
-    {
-        // check if we need to use the custom quicksort algorithm as a
-        // workaround to the PDFBOX-1512 transitivity issue of TextPositionComparator:
-        boolean is16orLess = false;
-        try
-        {
-            String version = System.getProperty("java.specification.version");
-            StringTokenizer st = new StringTokenizer(version, ".");
-            int majorVersion = Integer.parseInt(st.nextToken());
-            int minorVersion = 0;
-            if (st.hasMoreTokens())
-            {
-                minorVersion = Integer.parseInt(st.nextToken());
-            }
-            is16orLess = majorVersion == 1 && minorVersion <= 6;
-        }
-        catch (SecurityException x)
-        {
-            // when run in an applet ignore and use default
-            // assume 1.7 or higher so that quicksort is used
-        }
-        catch (NumberFormatException nfe)
-        {
-            // should never happen, but if it does,
-            // assume 1.7 or higher so that quicksort is used
-        }
-        useCustomQuickSort = !is16orLess;
-    }
+    private static final float defaultIndentThreshold = 2.0f;
+    private static final float defaultDropThreshold = 2.5f;
 
     /**
      * The platform's line separator.
@@ -530,18 +455,10 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
             if (getSortByPosition())
             {
                 TextPositionComparator comparator = new TextPositionComparator();
-
                 // because the TextPositionComparator is not transitive, but
                 // JDK7+ enforces transitivity on comparators, we need to use
-                // a custom quicksort implementation (which is slower, unfortunately).
-                if (useCustomQuickSort)
-                {
-                    QuickSort.sort(textList, comparator);
-                }
-                else
-                {
-                    Collections.sort(textList, comparator);
-                }
+                // a custom mergesort implementation (which is slower, unfortunately).
+                IterativeMergeSort.sort(textList, comparator);
             }
 
             startArticle();
