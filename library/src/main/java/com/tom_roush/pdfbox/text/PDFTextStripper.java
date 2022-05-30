@@ -1736,7 +1736,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * @param line a list with the words of the given line
      * @throws IOException if something went wrong
      */
-    private void writeLine(List<WordWithTextPositions> line)
+    protected void writeLine(List<WordWithTextPositions> line)
         throws IOException
     {
         int numberOfStrings = line.size();
@@ -2064,7 +2064,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      *
      * @author Axel Dörfler
      */
-    private static final class WordWithTextPositions
+    protected static final class WordWithTextPositions
     {
         String text;
         List<TextPosition> textPositions;

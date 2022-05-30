@@ -25,34 +25,12 @@ import java.io.IOException;
  */
 public abstract class COSNumber extends COSBase
 {
-
-    /**
-     * @deprecated Use the {@link COSInteger#ZERO} constant instead
-     */
-    @Deprecated
-    public static final COSInteger ZERO = COSInteger.ZERO;
-
-    /**
-     * @deprecated Use the {@link COSInteger#ONE} constant instead
-     */
-    @Deprecated
-    public static final COSInteger ONE = COSInteger.ONE;
-
     /**
      * This will get the float value of this number.
      *
      * @return The float value of this object.
      */
     public abstract float floatValue();
-
-    /**
-     * This will get the double value of this number.
-     *
-     * @return The double value of this number.
-     *
-     * @deprecated will be removed in a future release
-     */
-    public abstract double doubleValue();
 
     /**
      * This will get the integer value of this number.
@@ -102,18 +80,13 @@ public abstract class COSNumber extends COSBase
         }
         try
         {
-            if (number.charAt(0) == '+')
-            {
-                // PDFBOX-2569: some numbers start with "+"
-                return COSInteger.get(Long.parseLong(number.substring(1)));
-            }
             return COSInteger.get(Long.parseLong(number));
         }
         catch (NumberFormatException e)
         {
             // check if the given string could be a number at all
             String numberString = number.startsWith("+") || number.startsWith("-")
-                ? number.substring(1) : number;
+                    ? number.substring(1) : number;
             if (!numberString.matches("[0-9]*"))
             {
                 throw new IOException("Not a number: " + number);
