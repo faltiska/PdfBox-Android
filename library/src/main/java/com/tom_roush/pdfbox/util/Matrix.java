@@ -227,7 +227,7 @@ public final class Matrix implements Cloneable
      */
     public void concatenate(Matrix matrix)
     {
-        single = checkFloatValues(multiplyArrays(matrix.single, single));
+        single = multiplyArrays(matrix.single, single);
     }
 
     /**
@@ -251,7 +251,6 @@ public final class Matrix implements Cloneable
         single[6] += tx * single[0] + ty * single[3];
         single[7] += tx * single[1] + ty * single[4];
         single[8] += tx * single[2] + ty * single[5];
-        checkFloatValues(single);
     }
 
     /**
@@ -268,7 +267,6 @@ public final class Matrix implements Cloneable
         single[3] *= sy;
         single[4] *= sy;
         single[5] *= sy;
-        checkFloatValues(single);
     }
 
     /**
@@ -290,18 +288,8 @@ public final class Matrix implements Cloneable
      */
     public Matrix multiply(Matrix other)
     {
-        return new Matrix(checkFloatValues(multiplyArrays(single, other.single)));
+        return new Matrix(multiplyArrays(single, other.single));
     }
-
-    private float[] checkFloatValues(float[] values)
-    {
-        if (!Float.isFinite(values[0]) || !Float.isFinite(values[1]) || !Float.isFinite(values[2])
-                || !Float.isFinite(values[3]) || !Float.isFinite(values[4]) || !Float.isFinite(values[5])
-                || !Float.isFinite(values[6]) || !Float.isFinite(values[7]) || !Float.isFinite(values[8]))
-            throw new IllegalArgumentException("Multiplying two matrices produces illegal values");
-        return values;
-    }
-
 
     private float[] multiplyArrays(float[] a, float[] b)
     {
