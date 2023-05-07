@@ -1567,7 +1567,21 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         "\\.", "\\d+\\.", "\\[\\d+\\]", "\\d+\\)", "[A-Z]\\.", "[a-z]\\.", "[A-Z]\\)", "[a-z]\\)", "[IVXL]+\\.", "[ivxl]+\\.",
     };
 
-    private List<Pattern> listOfPatterns = null;
+    private List<Pattern> listOfPatterns = initializeListItemPatterns();
+
+    /**
+     * This allows child classes to return different list expression patterns;.
+     * @return the list of patterns
+     */
+    protected List<Pattern> initializeListItemPatterns() {
+        List<Pattern> listOfPatterns = new ArrayList<Pattern>();
+        for (String expression : LIST_ITEM_EXPRESSIONS)
+        {
+            Pattern p = Pattern.compile(expression);
+            listOfPatterns.add(p);
+        }
+        return listOfPatterns;
+    }
 
     /**
      * use to supply a different set of regular expression patterns for matching list item starts.
@@ -1600,15 +1614,6 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      */
     protected List<Pattern> getListItemPatterns()
     {
-        if (listOfPatterns == null)
-        {
-            listOfPatterns = new ArrayList<Pattern>();
-            for (String expression : LIST_ITEM_EXPRESSIONS)
-            {
-                Pattern p = Pattern.compile(expression);
-                listOfPatterns.add(p);
-            }
-        }
         return listOfPatterns;
     }
 
