@@ -48,7 +48,6 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle;
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import com.tom_roush.pdfbox.pdmodel.interactive.pagenavigation.PDThreadBead;
 import com.tom_roush.pdfbox.util.IterativeMergeSort;
-import com.tom_roush.pdfbox.util.QuickSort;
 
 /**
  * This class will take a pdf document and strip out all of the text and ignore the formatting and such. Please note; it
@@ -307,14 +306,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 }
                 else
                 {
-                    if (numberOfArticleSections < originalSize)
-                    {
-                        charactersByArticle.remove(i);
-                    }
-                    else
-                    {
-                        charactersByArticle.add(new ArrayList<TextPosition>());
-                    }
+                    charactersByArticle.add(new ArrayList<TextPosition>());
                 }
             }
             characterListMapping.clear();
@@ -624,7 +616,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 // add it to the list
                 if (characterValue != null)
                 {
-                    if (startOfPage && lastPosition == null)
+                    if (startOfPage)
                     {
                         writeParagraphStart();// not sure this is correct for RTL?
                     }
@@ -678,41 +670,6 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     protected void writeWordSeparator() throws IOException
     {
         output.write(getWordSeparator());
-    }
-
-    /**
-     * Write the string in TextPosition to the output stream.
-     *
-     * @param text The text to write to the stream.
-     * @throws IOException If there is an error when writing the text.
-     */
-    protected void writeCharacters(TextPosition text) throws IOException
-    {
-        output.write(text.getUnicode());
-    }
-
-    /**
-     * Write a Java string to the output stream. The default implementation will ignore the <code>textPositions</code>
-     * and just calls {@link #writeString(String)}.
-     *
-     * @param text The text to write to the stream.
-     * @param textPositions The TextPositions belonging to the text.
-     * @throws IOException If there is an error when writing the text.
-     */
-    protected void writeString(String text, List<TextPosition> textPositions) throws IOException
-    {
-        writeString(text);
-    }
-
-    /**
-     * Write a Java string to the output stream.
-     *
-     * @param text The text to write to the stream.
-     * @throws IOException If there is an error when writing the text.
-     */
-    protected void writeString(String text) throws IOException
-    {
-        output.write(text);
     }
 
     /**
@@ -1557,8 +1514,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     /**
      * returns the list item Pattern object that matches the text at the specified PositionWrapper or null if the text
      * does not match such a pattern. The list of Patterns tested against is given by the {@link #getListItemPatterns()}
-     * method. To add to the list, simply override that method (if sub-classing) or explicitly supply your own list
-     * using {@link #setListItemPatterns(List)}.
+     * method.
      *
      * @param pw position
      * @return the matching pattern
@@ -1574,20 +1530,26 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * a list of regular expressions that match commonly used list item formats, i.e. bullets, numbers, letters, Roman
      * numerals, etc. Not meant to be comprehensive.
      */
-    private static final String[] LIST_ITEM_EXPRESSIONS = { "\\.", "\\d+\\.", "\\[\\d+\\]",
-        "\\d+\\)", "[A-Z]\\.", "[a-z]\\.", "[A-Z]\\)", "[a-z]\\)", "[IVXL]+\\.",
-        "[ivxl]+\\.", };
+    private static final String[] LIST_ITEM_EXPRESSIONS = {
+        //TODO fix these, they don't work cause the text matched only has one character
+        "\\.", "\\d+\\.", "\\[\\d+\\]", "\\d+\\)", "[A-Z]\\.", "[a-z]\\.", "[A-Z]\\)", "[a-z]\\)", "[IVXL]+\\.", "[ivxl]+\\.",
+    };
 
-    private List<Pattern> listOfPatterns = null;
+    private final List<Pattern> listOfPatterns = initializeListItemPatterns();
 
     /**
-     * use to supply a different set of regular expression patterns for matching list item starts.
-     *
-     * @param patterns list of patterns
+     * Override to supply a different set of regular expression patterns for matching list item starts.
+     * @return a list of patterns
      */
-    protected void setListItemPatterns(List<Pattern> patterns)
+    protected List<Pattern> initializeListItemPatterns()
     {
-        listOfPatterns = patterns;
+        List<Pattern> patterns = new ArrayList<>();
+        for (String expression : LIST_ITEM_EXPRESSIONS)
+        {
+            Pattern p = Pattern.compile(expression);
+            patterns.add(p);
+        }
+        return patterns;
     }
 
     /**
@@ -1611,15 +1573,6 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      */
     protected List<Pattern> getListItemPatterns()
     {
-        if (listOfPatterns == null)
-        {
-            listOfPatterns = new ArrayList<Pattern>();
-            for (String expression : LIST_ITEM_EXPRESSIONS)
-            {
-                Pattern p = Pattern.compile(expression);
-                listOfPatterns.add(p);
-            }
-        }
         return listOfPatterns;
     }
 
@@ -1660,7 +1613,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         for (int i = 0; i < numberOfStrings; i++)
         {
             WordWithTextPositions word = line.get(i);
-            writeString(word.getText(), word.getTextPositions());
+            output.write(word.getText());
             if (i < numberOfStrings - 1)
             {
                 writeWordSeparator();
@@ -1797,6 +1750,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         {
             try
             {
+                //noinspection ConstantConditions
                 input.close();
             }
             catch (IOException e)
@@ -2021,7 +1975,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         private boolean isHangingIndent = false;
         private boolean isArticleStart = false;
 
-        private TextPosition position = null;
+        private TextPosition position;
 
         /**
          * Constructs a PositionWrapper around the specified TextPosition object.
