@@ -487,20 +487,10 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         {
             if (getSortByPosition())
             {
-                TextPositionComparator comparator = new TextPositionComparator();
-                // because the TextPositionComparator is not transitive, but
+                // TextPositionComparator is not transitive, but
                 // JDK7+ enforces transitivity on comparators, we need to use
                 // a custom mergesort implementation (which is slower, unfortunately).
-                try
-                {
-                    Collections.sort(textList, comparator);
-                }
-                catch (IllegalArgumentException e)
-                {
-                    IterativeMergeSort.sort(textList, comparator);
-                }
-                // a custom mergesort implementation (which is slower, unfortunately).
-                IterativeMergeSort.sort(textList, comparator);
+                IterativeMergeSort.sort(textList, new TextPositionComparator());
             }
 
             startArticle();
@@ -720,6 +710,41 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     protected void writeWordSeparator() throws IOException
     {
         output.write(getWordSeparator());
+    }
+
+    /**
+     * Write the string in TextPosition to the output stream.
+     *
+     * @param text The text to write to the stream.
+     * @throws IOException If there is an error when writing the text.
+     */
+    protected void writeCharacters(TextPosition text) throws IOException
+    {
+        output.write(text.getUnicode());
+    }
+
+    /**
+     * Write a Java string to the output stream. The default implementation will ignore the <code>textPositions</code>
+     * and just calls {@link #writeString(String)}.
+     *
+     * @param text The text to write to the stream.
+     * @param textPositions The TextPositions belonging to the text.
+     * @throws IOException If there is an error when writing the text.
+     */
+    protected void writeString(String text, List<TextPosition> textPositions) throws IOException
+    {
+        writeString(text);
+    }
+
+    /**
+     * Write a Java string to the output stream.
+     *
+     * @param text The text to write to the stream.
+     * @throws IOException If there is an error when writing the text.
+     */
+    protected void writeString(String text) throws IOException
+    {
+        output.write(text);
     }
 
     /**
@@ -1564,7 +1589,8 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     /**
      * returns the list item Pattern object that matches the text at the specified PositionWrapper or null if the text
      * does not match such a pattern. The list of Patterns tested against is given by the {@link #getListItemPatterns()}
-     * method.
+     * method. To add to the list, simply override that method (if sub-classing) or explicitly supply your own list
+     * using {@link #setListItemPatterns(List)}.
      *
      * @param pw position
      * @return the matching pattern
@@ -1585,21 +1611,16 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         "\\.", "\\d+\\.", "\\[\\d+\\]", "\\d+\\)", "[A-Z]\\.", "[a-z]\\.", "[A-Z]\\)", "[a-z]\\)", "[IVXL]+\\.", "[ivxl]+\\.",
     };
 
-    private final List<Pattern> listOfPatterns = initializeListItemPatterns();
+    private List<Pattern> listOfPatterns = null;
 
     /**
-     * Override to supply a different set of regular expression patterns for matching list item starts.
-     * @return a list of patterns
+     * use to supply a different set of regular expression patterns for matching list item starts.
+     *
+     * @param patterns list of patterns
      */
-    protected List<Pattern> initializeListItemPatterns()
+    protected void setListItemPatterns(List<Pattern> patterns)
     {
-        List<Pattern> patterns = new ArrayList<>();
-        for (String expression : LIST_ITEM_EXPRESSIONS)
-        {
-            Pattern p = Pattern.compile(expression);
-            patterns.add(p);
-        }
-        return patterns;
+        listOfPatterns = patterns;
     }
 
     /**
@@ -1623,6 +1644,15 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      */
     protected List<Pattern> getListItemPatterns()
     {
+        if (listOfPatterns == null)
+        {
+            listOfPatterns = new ArrayList<Pattern>();
+            for (String expression : LIST_ITEM_EXPRESSIONS)
+            {
+                Pattern p = Pattern.compile(expression);
+                listOfPatterns.add(p);
+            }
+        }
         return listOfPatterns;
     }
 
