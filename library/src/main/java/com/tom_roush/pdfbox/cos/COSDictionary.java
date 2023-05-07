@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +41,7 @@ import com.tom_roush.pdfbox.util.SmallMap;
 public class COSDictionary extends COSBase implements COSUpdateInfo
 {
     private static final String PATH_SEPARATOR = "/";
+    private static final int MAP_THRESHOLD = 1000;
     private boolean needToBeUpdated;
 
     /**
@@ -62,7 +64,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      */
     public COSDictionary(COSDictionary dict)
     {
-        items.putAll(dict.items);
+        addAll(dict);
     }
 
     /**
@@ -214,6 +216,10 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         }
         else
         {
+            if (items instanceof SmallMap && items.size() >= MAP_THRESHOLD)
+            {
+                items = new LinkedHashMap<COSName, COSBase>(items);
+            }
             items.put(key, value);
         }
     }
@@ -1001,7 +1007,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         COSBase bool = getDictionaryObject(firstKey, secondKey);
         if (bool instanceof COSBoolean)
         {
-            retval = ((COSBoolean) bool).getValue();
+            retval = bool == COSBoolean.TRUE;
         }
         return retval;
     }
@@ -1438,14 +1444,15 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
      * This will add all of the dictionaries keys/values to this dictionary. Existing key/value pairs will be
      * overwritten.
      *
-     * @param dic The dictionaries to get the key/value pairs from.
+     * @param dict The dictionaries to get the key/value pairs from.
      */
-    public void addAll(COSDictionary dic)
+    public void addAll(COSDictionary dict)
     {
-        for (Map.Entry<COSName, COSBase> entry : dic.entrySet())
+        if (items instanceof SmallMap && items.size() + dict.items.size() >= MAP_THRESHOLD)
         {
-            setItem(entry.getKey(), entry.getValue());
+            items = new LinkedHashMap<COSName, COSBase>(items);
         }
+        items.putAll(dict.items);
     }
 
     /**
@@ -1508,7 +1515,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         {
             if (retval instanceof COSArray)
             {
-                int idx = Integer.parseInt(pathString.replaceAll("\\[", "").replaceAll("\\]", ""));
+                int idx = Integer.parseInt(pathString.replace("\\[", "").replace("\\]", ""));
                 retval = ((COSArray) retval).getObject(idx);
             }
             else if (retval instanceof COSDictionary)
@@ -1559,8 +1566,7 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         objs.add(base);
         if (base instanceof COSDictionary)
         {
-            StringBuilder sb = new StringBuilder();
-            sb.append("COSDictionary{");
+            StringBuilder sb = new StringBuilder("COSDictionary{");
             for (Map.Entry<COSName, COSBase> x : ((COSDictionary) base).entrySet())
             {
                 sb.append(x.getKey());
@@ -1580,9 +1586,8 @@ public class COSDictionary extends COSBase implements COSUpdateInfo
         }
         if (base instanceof COSArray)
         {
-            StringBuilder sb = new StringBuilder();
-            sb.append("COSArray{");
-            for (COSBase x : ((COSArray) base).toList())
+            StringBuilder sb = new StringBuilder("COSArray{");
+            for (COSBase x : ((COSArray) base))
             {
                 sb.append(getDictionaryString(x, objs));
                 sb.append(";");

@@ -23,9 +23,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import com.tom_roush.fontbox.cmap.CMap;
+import com.tom_roush.fontbox.ttf.CmapLookup;
 import com.tom_roush.fontbox.ttf.TTFParser;
 import com.tom_roush.fontbox.ttf.TrueTypeFont;
 import com.tom_roush.fontbox.util.BoundingBox;
@@ -192,6 +194,11 @@ public class PDType0Font extends PDFont implements PDVectorFont
         {
             throw new IOException("Missing descendant font dictionary");
         }
+        if (!COSName.FONT.equals(
+            ((COSDictionary) descendantFontDictBase).getCOSName(COSName.TYPE, COSName.FONT)))
+        {
+            throw new IOException("Missing or wrong type in descendant font dictionary");
+        }
         descendantFont = PDFontFactory.createDescendantFont((COSDictionary) descendantFontDictBase, this);
         readEncoding();
         fetchCMapUCS2();
@@ -206,7 +213,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
      * @param closeTTF whether to close the ttf parameter after embedding. Must be true when the ttf
      * parameter was created in the load() method, false when the ttf parameter was passed to the
      * load() method.
-     * @param vertical
+     * @param vertical whether to enable vertical substitutions.
      * @throws IOException
      */
     private PDType0Font(PDDocument document, TrueTypeFont ttf, boolean embedSubset,
@@ -277,14 +284,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
             // predefined CMap
             COSName encodingName = (COSName) encoding;
             cMap = CMapManager.getPredefinedCMap(encodingName.getName());
-            if (cMap != null)
-            {
-                isCMapPredefined = true;
-            }
-            else
-            {
-                throw new IOException("Missing required CMap");
-            }
+            isCMapPredefined = true;
         }
         else if (encoding != null)
         {
@@ -303,11 +303,12 @@ public class PDType0Font extends PDFont implements PDVectorFont
         PDCIDSystemInfo ros = descendantFont.getCIDSystemInfo();
         if (ros != null)
         {
+            String ordering = ros.getOrdering();
             isDescendantCJK = "Adobe".equals(ros.getRegistry()) &&
-                ("GB1".equals(ros.getOrdering()) ||
-                    "CNS1".equals(ros.getOrdering()) ||
-                    "Japan1".equals(ros.getOrdering()) ||
-                    "Korea1".equals(ros.getOrdering()));
+                ("GB1".equals(ordering) ||
+                    "CNS1".equals(ordering) ||
+                    "Japan1".equals(ordering) ||
+                    "Korea1".equals(ordering));
         }
     }
 
@@ -333,9 +334,13 @@ public class PDType0Font extends PDFont implements PDVectorFont
             String strName = null;
             if (isDescendantCJK)
             {
-                strName = descendantFont.getCIDSystemInfo().getRegistry() + "-" +
-                    descendantFont.getCIDSystemInfo().getOrdering() + "-" +
-                    descendantFont.getCIDSystemInfo().getSupplement();
+                PDCIDSystemInfo cidSystemInfo = descendantFont.getCIDSystemInfo();
+                if (cidSystemInfo != null)
+                {
+                    strName = cidSystemInfo.getRegistry() + "-" +
+                        cidSystemInfo.getOrdering() + "-" +
+                        cidSystemInfo.getSupplement();
+                }
             }
             else if (name != null)
             {
@@ -406,7 +411,7 @@ public class PDType0Font extends PDFont implements PDVectorFont
     @Override
     public boolean isVertical()
     {
-        return cMap.getWMode() == 1;
+        return cMap != null && cMap.getWMode() == 1;
     }
 
     @Override
@@ -498,18 +503,53 @@ public class PDType0Font extends PDFont implements PDVectorFont
             // e) Map the CID according to the CMap from step d), producing a Unicode value
             return cMapUCS2.toUnicode(cid);
         }
-        else
+
+        // PDFBOX-5324: try to get unicode from font cmap
+        if (descendantFont instanceof PDCIDFontType2)
         {
-            if (!noUnicode.contains(code))
+            TrueTypeFont font = ((PDCIDFontType2) descendantFont).getTrueTypeFont();
+            if (font != null)
             {
-                // if no value has been produced, there is no way to obtain Unicode for the character.
-                String cid = "CID+" + codeToCID(code);
-                Log.w("PdfBox-Android", "No Unicode mapping for " + cid + " (" + code + ") in font " + getName());
-                // we keep track of which warnings have been issued, so we don't log multiple times
-                noUnicode.add(code);
+                try
+                {
+                    CmapLookup cmap = font.getUnicodeCmapLookup(false);
+                    if (cmap != null)
+                    {
+                        int gid;
+                        if (descendantFont.isEmbedded())
+                        {
+                            // original PDFBOX-5324 supported only embedded fonts
+                            gid = descendantFont.codeToGID(code);
+                        }
+                        else
+                        {
+                            // PDFBOX-5331: this bypasses the fallback attempt in
+                            // PDCIDFontType2.codeToGID() which would bring a stackoverflow
+                            gid = descendantFont.codeToCID(code);
+                        }
+                        List<Integer> codes = cmap.getCharCodes(gid);
+                        if (codes != null && !codes.isEmpty())
+                        {
+                            return Character.toString((char) (int) codes.get(0));
+                        }
+                    }
+                }
+                catch (IOException e)
+                {
+                    Log.w("PdfBox-Android", "get unicode from font cmap fail", e);
+                }
             }
-            return null;
         }
+
+        if (!noUnicode.contains(code))
+        {
+            // if no value has been produced, there is no way to obtain Unicode for the character.
+            String cid = "CID+" + codeToCID(code);
+            Log.w("PdfBox-Android", "No Unicode mapping for " + cid + " (" + code + ") in font " + getName());
+            // we keep track of which warnings have been issued, so we don't log multiple times
+            noUnicode.add(code);
+        }
+        return null;
     }
 
     @Override
@@ -528,6 +568,10 @@ public class PDType0Font extends PDFont implements PDVectorFont
     @Override
     public int readCode(InputStream in) throws IOException
     {
+        if (cMap == null)
+        {
+            throw new IOException("required cmap is null");
+        }
         return cMap.readCode(in);
     }
 

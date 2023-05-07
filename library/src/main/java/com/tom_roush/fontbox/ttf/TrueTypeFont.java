@@ -459,9 +459,10 @@ public class TrueTypeFont implements FontBoxFont, Closeable
     @Override
     public String getName() throws IOException
     {
-        if (getNaming() != null)
+        NamingTable namingTable = getNaming();
+        if (namingTable != null)
         {
-            return getNaming().getPostScriptName();
+            return namingTable.getPostScriptName();
         }
         else
         {
@@ -690,7 +691,7 @@ public class TrueTypeFont implements FontBoxFont, Closeable
     @Override
     public float getWidth(String name) throws IOException
     {
-        Integer gid = nameToGID(name);
+        int gid = nameToGID(name);
         return getAdvanceWidth(gid);
     }
 
@@ -703,10 +704,11 @@ public class TrueTypeFont implements FontBoxFont, Closeable
     @Override
     public BoundingBox getFontBBox() throws IOException
     {
-        short xMin = getHeader().getXMin();
-        short xMax = getHeader().getXMax();
-        short yMin = getHeader().getYMin();
-        short yMax = getHeader().getYMax();
+        HeaderTable headerTable = getHeader();
+        short xMin = headerTable.getXMin();
+        short xMax = headerTable.getXMax();
+        short yMin = headerTable.getYMin();
+        short yMax = headerTable.getYMax();
         float scale = 1000f / getUnitsPerEm();
         return new BoundingBox(xMin * scale, yMin * scale, xMax * scale, yMax * scale);
     }
@@ -753,9 +755,10 @@ public class TrueTypeFont implements FontBoxFont, Closeable
     {
         try
         {
-            if (getNaming() != null)
+            NamingTable namingTable = getNaming();
+            if (namingTable != null)
             {
-                return getNaming().getPostScriptName();
+                return namingTable.getPostScriptName();
             }
             else
             {

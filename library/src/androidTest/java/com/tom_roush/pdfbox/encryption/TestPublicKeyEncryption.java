@@ -126,7 +126,7 @@ public class TestPublicKeyEncryption
         permission1.setCanModify(false);
         permission1.setCanModifyAnnotations(false);
         permission1.setCanPrint(false);
-        permission1.setCanPrintDegraded(false);
+        permission1.setCanPrintFaithful(false);
 
         permission2 = new AccessPermission();
         permission2.setCanAssembleDocument(false);
@@ -136,7 +136,7 @@ public class TestPublicKeyEncryption
         permission2.setCanModify(false);
         permission2.setCanModifyAnnotations(false);
         permission2.setCanPrint(true); // it is true now !
-        permission2.setCanPrintDegraded(false);
+        permission2.setCanPrintFaithful(false);
 
         recipient1 = getRecipient("test1.der", permission1);
         recipient2 = getRecipient("test2.der", permission2);
@@ -228,7 +228,7 @@ public class TestPublicKeyEncryption
             Assert.assertFalse(permission.canModify());
             Assert.assertFalse(permission.canModifyAnnotations());
             Assert.assertFalse(permission.canPrint());
-            Assert.assertFalse(permission.canPrintDegraded());
+            Assert.assertFalse(permission.canPrintFaithful());
         }
         finally
         {
@@ -264,7 +264,7 @@ public class TestPublicKeyEncryption
             Assert.assertFalse(permission.canModify());
             Assert.assertFalse(permission.canModifyAnnotations());
             Assert.assertFalse(permission.canPrint());
-            Assert.assertFalse(permission.canPrintDegraded());
+            Assert.assertFalse(permission.canPrintFaithful());
         }
         finally
         {
@@ -283,7 +283,7 @@ public class TestPublicKeyEncryption
             Assert.assertFalse(permission.canModify());
             Assert.assertFalse(permission.canModifyAnnotations());
             Assert.assertTrue(permission.canPrint());
-            Assert.assertFalse(permission.canPrintDegraded());
+            Assert.assertFalse(permission.canPrintFaithful());
         }
         finally
         {
@@ -378,5 +378,51 @@ public class TestPublicKeyEncryption
         Assert.assertEquals("Key length: 256", stripper.getText(doc).trim());
         is.close();
         doc.close();
+    }
+
+    /**
+     * PDFBOX-5249: Read a file encrypted with AES128 but not with PDFBox, and with exposed
+     * Metadata.
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testReadPubkeyEncryptedAES128withMetadataExposed() throws IOException
+    {
+        InputStream is = testContext.getAssets().open(path + "AES128ExposedMeta.pdf");
+        PDDocument doc = PDDocument.load(is, "",
+            testContext.getAssets().open(path + "PDFBOX-5249.p12"), "test",
+            MemoryUsageSetting.setupMainMemoryOnly());
+        Assert.assertEquals("PublicKeySecurityHandler",
+            doc.getEncryption().getSecurityHandler().getClass().getSimpleName());
+        Assert.assertEquals(128, doc.getEncryption().getSecurityHandler().getKeyLength());
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setLineSeparator("\n");
+        Assert.assertEquals("AES key length: 128\nwith exposed Metadata", stripper.getText(doc).trim());
+        doc.close();
+        is.close();
+    }
+
+    /**
+     * PDFBOX-5249: Read a file encrypted with AES128 but not with PDFBox, and with exposed
+     * Metadata.
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testReadPubkeyEncryptedAES256withMetadataExposed() throws IOException
+    {
+        InputStream is = testContext.getAssets().open(path + "AES256ExposedMeta.pdf");
+        PDDocument doc = PDDocument.load(is, "",
+            testContext.getAssets().open(path + "PDFBOX-5249.p12"), "test",
+            MemoryUsageSetting.setupMainMemoryOnly());
+        Assert.assertEquals("PublicKeySecurityHandler",
+            doc.getEncryption().getSecurityHandler().getClass().getSimpleName());
+        Assert.assertEquals(256, doc.getEncryption().getSecurityHandler().getKeyLength());
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setLineSeparator("\n");
+        Assert.assertEquals("AES key length: 256 \nwith exposed Metadata", stripper.getText(doc).trim());
+        doc.close();
+        is.close();
     }
 }

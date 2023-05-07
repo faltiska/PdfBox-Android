@@ -18,6 +18,8 @@
 package com.tom_roush.pdfbox.pdmodel.font;
 
 import android.content.Context;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -227,11 +229,7 @@ public class PDFontTest
                 break;
             }
         }
-        if (ttc == null)
-        {
-            Log.i("PdfBox-Android", "testFullEmbeddingTTC skipped, no .ttc files available");
-            return;
-        }
+        assumeTrue("testFullEmbeddingTTC skipped, no .ttc files available", ttc != null);
 
         final List<String> names = new ArrayList<String>();
         ttc.processAllFonts(new TrueTypeCollection.TrueTypeFontProcessor()
@@ -394,5 +392,71 @@ public class PDFontTest
         doc.close();
 
         Assert.assertTrue(tempPdfFile.delete());
+    }
+
+    /**
+     * PDFBOX-5115: U+00AD (soft hyphen) should work with WinAnsiEncoding.
+     */
+    @Test
+    public void testSoftHyphen() throws IOException
+    {
+        String text = "- \u00AD";
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage();
+        doc.addPage(page);
+        PDFont font1 = PDType1Font.HELVETICA;
+        PDFont font2 = PDType0Font.load(doc, testContext.getAssets().open(
+            "com/tom_roush/pdfbox/resources/ttf/LiberationSans-Regular.ttf"));
+
+        Assert.assertEquals(font1.getStringWidth("-"), font1.getStringWidth("\u00AD"), 0);
+        Assert.assertEquals(font2.getStringWidth("-"), font2.getStringWidth("\u00AD"), 0);
+
+        PDPageContentStream cs = new PDPageContentStream(doc, page);
+        cs.beginText();
+        cs.newLineAtOffset(100, 500);
+        cs.setFont(font1, 10);
+        cs.showText(text);
+        cs.newLineAtOffset(0, 100);
+        cs.setFont(font2, 10);
+        cs.showText(text);
+        cs.endText();
+        cs.close();
+        doc.save(baos);
+        doc.close();
+
+        doc = PDDocument.load(baos.toByteArray());
+        PDFTextStripper stripper = new PDFTextStripper();
+        stripper.setLineSeparator("\n");
+        String extractedText = stripper.getText(doc);
+        Assert.assertEquals(text + "\n" + text, extractedText.trim());
+        doc.close();
+    }
+
+    /**
+     * Test font with an unusual cmap table combination (0, 3).
+     *
+     * @throws IOException
+     */
+    @Test
+    public void testPDFBox5484() throws IOException
+    {
+        File fontFile = TestResourceGenerator.downloadTestResource(IN_DIR, "PDFBOX-5484.ttf", "https://issues.apache.org/jira/secure/attachment/13047577/PDFBOX-5484.ttf");
+        assumeTrue(fontFile.exists());
+
+        TrueTypeFont ttf = new TTFParser().parse(fontFile);
+        PDDocument doc = new PDDocument();
+        PDTrueTypeFont tr = PDTrueTypeFont.load(doc, ttf, WinAnsiEncoding.INSTANCE);
+        Path path1 = tr.getPath("oslash");
+        Path path2 = tr.getPath(248);
+        Assert.assertFalse(path2.isEmpty()); // not empty
+
+        RectF area1 = new RectF();
+        path1.computeBounds(area1, true);
+        RectF area2 = new RectF();
+        path2.computeBounds(area2, true);
+
+        Assert.assertTrue(area1.equals(area2)); // assertEquals does not test equals()
+        doc.close();
     }
 }

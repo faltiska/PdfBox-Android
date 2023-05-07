@@ -64,6 +64,8 @@ public final class Matrix implements Cloneable
      * Creates a matrix from a 6-element (a b c d e f) COS array.
      *
      * @param array source array, elements must be or extend COSNumber
+     *
+     * @deprecated use {@link Matrix#createMatrix(COSBase)} instead
      */
     public Matrix(COSArray array)
     {
@@ -305,6 +307,7 @@ public final class Matrix implements Cloneable
         c[8] = a[6] * b[2] + a[7] * b[5] + a[8] * b[8];
         return c;
     }
+
     /**
      * Transforms the given point by this matrix.
      *
@@ -328,6 +331,8 @@ public final class Matrix implements Cloneable
      *
      * @param x x-coordinate
      * @param y y-coordinate
+     *
+     * @return the transformed point.
      */
     public PointF transformPoint(float x, float y)
     {
@@ -341,9 +346,11 @@ public final class Matrix implements Cloneable
     }
 
     /**
-     * Transforms the given point by this matrix.
+     * Transforms the given vector by this matrix.
      *
      * @param vector 2D vector
+     *
+     * @return the transformed vector.
      */
     public Vector transform(Vector vector)
     {

@@ -107,7 +107,8 @@ public class PDAcroFormFlattenTest
    /*
     * PDFBOX-2469 Filled template.
     */
-   @Test
+   // Disabled as there is a minimal difference which can not be seen visually, see PDFBOX-5133
+   // @Test
    public void testFlattenPDFBOX2469Filled() throws IOException
    {
       String sourceUrl = "https://issues.apache.org/jira/secure/attachment/12678455/testPDF_acroForm.pdf";
@@ -196,19 +197,6 @@ public class PDAcroFormFlattenTest
    {
       String sourceUrl = "https://issues.apache.org/jira/secure/attachment/12821308/Signed-Document-4.pdf";
       String targetFileName = "Signed-Document-4.pdf";
-
-      flattenAndCompare(sourceUrl, targetFileName);
-   }
-
-   /*
-    * PDFBOX-3587 Empty template.
-    */
-   // disabled as there is a missing character with the available fonts on the test server
-   // @Test
-   public void testFlattenOpenOfficeForm() throws IOException
-   {
-      String sourceUrl = "https://issues.apache.org/jira/secure/attachment/12839977/OpenOfficeForm.pdf";
-      String targetFileName = "OpenOfficeForm.pdf";
 
       flattenAndCompare(sourceUrl, targetFileName);
    }

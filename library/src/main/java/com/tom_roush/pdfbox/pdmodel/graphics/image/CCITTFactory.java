@@ -82,9 +82,10 @@ public final class CCITTFactory
                 // flip bit to avoid having to set /BlackIs1
                 mcios.writeBits(~(pixels[x] & 1), 1);
             }
-            if (mcios.getBitOffset() != 0)
+            int bitOffset = mcios.getBitOffset();
+            if (bitOffset != 0)
             {
-                mcios.writeBits(0, 8 - mcios.getBitOffset());
+                mcios.writeBits(0, 8 - bitOffset);
             }
         }
         mcios.flush();
@@ -306,7 +307,7 @@ public final class CCITTFactory
             }
 
             // Relocate to the first set of tags
-            int address = readlong(endianess, reader);
+            long address = readlong(endianess, reader);
             reader.seek(address);
 
             // If some higher page number is required, skip this page's tags, 
@@ -318,7 +319,7 @@ public final class CCITTFactory
                 {
                     throw new IOException("Not a valid tiff file");
                 }
-                reader.seek(address + 2 + numtags * 12);
+                reader.seek(address + 2 + numtags * 12L);
                 address = readlong(endianess, reader);
                 if (address == 0)
                 {

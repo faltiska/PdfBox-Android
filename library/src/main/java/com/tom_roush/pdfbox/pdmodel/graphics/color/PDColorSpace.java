@@ -121,9 +121,7 @@ public abstract class PDColorSpace implements COSObjectable
             // built-in color spaces
             if (name == COSName.DEVICECMYK)
             {
-//                return PDDeviceCMYK.INSTANCE;
-                Log.e("PdfBox-Android", "Unsupported color space kind: " + name + ". Will try DeviceRGB instead");
-                return PDDeviceRGB.INSTANCE;
+                return PDDeviceCMYK.INSTANCE;
             }
             else if (name == COSName.DEVICERGB)
             {
@@ -200,9 +198,7 @@ public abstract class PDColorSpace implements COSObjectable
             }
             else if (name == COSName.ICCBASED)
             {
-//                return PDICCBased.create(array, resources);
-                Log.e("PdfBox-Android", "Unsupported color space kind: " + name + ". Will try DeviceRGB instead");
-                return PDDeviceRGB.INSTANCE;
+                return PDICCBased.create(array, resources);
             }
             else if (name == COSName.LAB)
             {
@@ -239,7 +235,14 @@ public abstract class PDColorSpace implements COSObjectable
             ((COSDictionary) colorSpace).containsKey(COSName.COLORSPACE))
         {
             // PDFBOX-4833: dictionary with /ColorSpace entry
-            return create(((COSDictionary) colorSpace).getDictionaryObject(COSName.COLORSPACE), resources, wasDefault);
+            COSBase base = ((COSDictionary) colorSpace).getDictionaryObject(COSName.COLORSPACE);
+            if (base == colorSpace)
+            {
+                // PDFBOX-5315
+                throw new IOException("Recursion in colorspace: " +
+                    ((COSDictionary) colorSpace).getItem(COSName.COLORSPACE) + " points to itself");
+            }
+            return create(base, resources, wasDefault);
         }
         else
         {

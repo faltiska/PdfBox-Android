@@ -78,7 +78,7 @@ public abstract class PDCIDFont implements COSObjectable, PDFontLike, PDVectorFo
             COSArray wArray = (COSArray) wBase;
             int size = wArray.size();
             int counter = 0;
-            while (counter < size)
+            while (counter < size - 1)
             {
                 COSBase firstCodeBase = wArray.getObject(counter++);
                 if (!(firstCodeBase instanceof COSNumber))
@@ -109,6 +109,11 @@ public abstract class PDCIDFont implements COSObjectable, PDFontLike, PDVectorFo
                 }
                 else
                 {
+                    if (counter >= size)
+                    {
+                        Log.w("PdfBox-Android", "premature end of widths array");
+                        break;
+                    }
                     COSBase secondCodeBase = next;
                     COSBase rangeWidthBase = wArray.getObject(counter++);
                     if (!(secondCodeBase instanceof COSNumber) || !(rangeWidthBase instanceof COSNumber))
@@ -336,7 +341,10 @@ public abstract class PDCIDFont implements COSObjectable, PDFontLike, PDVectorFo
                     }
                 }
             }
-            averageWidth = totalWidths / characterCount;
+            if (characterCount != 0)
+            {
+                averageWidth = totalWidths / characterCount;
+            }
             if (averageWidth <= 0 || Float.isNaN(averageWidth))
             {
                 averageWidth = getDefaultWidth();

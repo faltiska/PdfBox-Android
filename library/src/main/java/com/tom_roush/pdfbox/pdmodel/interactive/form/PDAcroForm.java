@@ -39,6 +39,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument;
 import com.tom_roush.pdfbox.pdmodel.PDPage;
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream;
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream.AppendMode;
+import com.tom_roush.pdfbox.pdmodel.PDPageTree;
 import com.tom_roush.pdfbox.pdmodel.PDResources;
 import com.tom_roush.pdfbox.pdmodel.common.COSArrayList;
 import com.tom_roush.pdfbox.pdmodel.common.COSObjectable;
@@ -148,8 +149,8 @@ public final class PDAcroForm implements COSObjectable
         FDFDictionary fdfDict = new FDFDictionary();
         catalog.setFDF(fdfDict);
 
-        List<FDFField> fdfFields = new ArrayList<FDFField>();
         List<PDField> fields = getFields();
+        List<FDFField> fdfFields = new ArrayList<FDFField>(fields.size());
         for (PDField field : fields)
         {
             fdfFields.add(field.exportFDF());
@@ -239,14 +240,12 @@ public final class PDAcroForm implements COSObjectable
             refreshAppearances(fields);
         }
 
-        // the content stream to write to
-        PDPageContentStream contentStream;
-
         // get the widgets per page
-        Map<COSDictionary,Set<COSDictionary>> pagesWidgetsMap = buildPagesWidgetsMap(fields);
+        PDPageTree pages = document.getPages();
+        Map<COSDictionary,Set<COSDictionary>> pagesWidgetsMap = buildPagesWidgetsMap(fields, pages);
 
         // preserve all non widget annotations
-        for (PDPage page : document.getPages())
+        for (PDPage page : pages)
         {
             Set<COSDictionary> widgetsForPageMap = pagesWidgetsMap.get(page.getCOSObject());
 
@@ -264,24 +263,31 @@ public final class PDAcroForm implements COSObjectable
                 }
                 else if (isVisibleAnnotation(annotation))
                 {
-                    contentStream = new PDPageContentStream(document, page, AppendMode.APPEND, true, !isContentStreamWrapped);
-                    isContentStreamWrapped = true;
+                    PDPageContentStream contentStream = new PDPageContentStream(
+                        document, page, AppendMode.APPEND, true, !isContentStreamWrapped);
+                    try
+                    {
+                        isContentStreamWrapped = true;
 
-                    PDAppearanceStream appearanceStream = annotation.getNormalAppearanceStream();
+                        PDAppearanceStream appearanceStream = annotation.getNormalAppearanceStream();
 
-                    PDFormXObject fieldObject = new PDFormXObject(appearanceStream.getCOSObject());
+                        PDFormXObject fieldObject = new PDFormXObject(appearanceStream.getCOSObject());
 
-                    contentStream.saveGraphicsState();
+                        contentStream.saveGraphicsState();
 
-                    // see https://stackoverflow.com/a/54091766/1729265 for an explanation
-                    // of the steps required
-                    // this will transform the appearance stream form object into the rectangle of the
-                    // annotation bbox and map the coordinate systems
-                    Matrix transformationMatrix = resolveTransformationMatrix(annotation, appearanceStream);
-                    contentStream.transform(transformationMatrix);
-                    contentStream.drawForm(fieldObject);
-                    contentStream.restoreGraphicsState();
-                    contentStream.close();
+                        // see https://stackoverflow.com/a/54091766/1729265 for an explanation
+                        // of the steps required
+                        // this will transform the appearance stream form object into the rectangle of the
+                        // annotation bbox and map the coordinate systems
+                        Matrix transformationMatrix = resolveTransformationMatrix(annotation, appearanceStream);
+                        contentStream.transform(transformationMatrix);
+                        contentStream.drawForm(fieldObject);
+                        contentStream.restoreGraphicsState();
+                    }
+                    finally
+                    {
+                        contentStream.close();
+                    }
                 }
             }
             page.setAnnotations(annotations);
@@ -292,6 +298,12 @@ public final class PDAcroForm implements COSObjectable
 
         // remove XFA for hybrid forms
         dictionary.removeItem(COSName.XFA);
+
+        // remove SigFlags if no signature left
+        if (this.document.getSignatureDictionaries().isEmpty())
+        {
+            this.getCOSObject().removeItem(COSName.SIG_FLAGS);
+        }
     }
 
     private boolean isVisibleAnnotation(PDAnnotation annotation)
@@ -368,10 +380,10 @@ public final class PDAcroForm implements COSObjectable
         List<PDField> pdFields = new ArrayList<PDField>();
         for (int i = 0; i < cosFields.size(); i++)
         {
-            COSDictionary element = (COSDictionary) cosFields.getObject(i);
-            if (element != null)
+            COSBase element = cosFields.getObject(i);
+            if (element instanceof COSDictionary)
             {
-                PDField field = PDField.fromDictionary(this, element, null);
+                PDField field = PDField.fromDictionary(this, (COSDictionary) element, null);
                 if (field != null)
                 {
                     pdFields.add(field);
@@ -707,7 +719,8 @@ public final class PDAcroForm implements COSObjectable
         return bounds;
     }
 
-    private Map<COSDictionary,Set<COSDictionary>> buildPagesWidgetsMap(List<PDField> fields) throws IOException
+    private Map<COSDictionary,Set<COSDictionary>> buildPagesWidgetsMap(
+        List<PDField> fields, PDPageTree pages) throws IOException
     {
         Map<COSDictionary,Set<COSDictionary>> pagesAnnotationsMap =
             new HashMap<COSDictionary, Set<COSDictionary>>();
@@ -738,7 +751,7 @@ public final class PDAcroForm implements COSObjectable
         // If there is a widget with a missing page reference we need to build the map reverse i.e. 
         // from the annotations to the widget.
         Log.w("PdfBox-Android", "There has been a widget with a missing page reference, will check all page annotations");
-        for (PDPage page : document.getPages())
+        for (PDPage page : pages)
         {
             for (PDAnnotation annotation : page.getAnnotations())
             {
@@ -755,15 +768,15 @@ public final class PDAcroForm implements COSObjectable
     private void fillPagesAnnotationMap(Map<COSDictionary, Set<COSDictionary>> pagesAnnotationsMap,
         PDPage page, PDAnnotationWidget widget)
     {
-        if (pagesAnnotationsMap.get(page.getCOSObject()) == null)
+        Set<COSDictionary> widgetsForPage = pagesAnnotationsMap.get(page.getCOSObject());
+        if (widgetsForPage == null)
         {
-            Set<COSDictionary> widgetsForPage = new HashSet<COSDictionary>();
+            widgetsForPage = new HashSet<COSDictionary>();
             widgetsForPage.add(widget.getCOSObject());
             pagesAnnotationsMap.put(page.getCOSObject(), widgetsForPage);
         }
         else
         {
-            Set<COSDictionary> widgetsForPage = pagesAnnotationsMap.get(page.getCOSObject());
             widgetsForPage.add(widget.getCOSObject());
         }
     }

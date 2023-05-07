@@ -61,8 +61,52 @@ import com.tom_roush.pdfbox.util.IterativeMergeSort;
  */
 public class PDFTextStripper extends LegacyPDFStreamEngine
 {
-    private static final float defaultIndentThreshold = 2.0f;
-    private static final float defaultDropThreshold = 2.5f;
+    private static float defaultIndentThreshold = 2.0f;
+    private static float defaultDropThreshold = 2.5f;
+
+    // enable the ability to set the default indent/drop thresholds
+    // with -D system properties:
+    // pdftextstripper.indent
+    // pdftextstripper.drop
+    static
+    {
+        String strDrop = null, strIndent = null;
+        try
+        {
+            String className = PDFTextStripper.class.getSimpleName().toLowerCase();
+            String prop = className + ".indent";
+            strIndent = System.getProperty(prop);
+            prop = className + ".drop";
+            strDrop = System.getProperty(prop);
+        }
+        catch (SecurityException e)
+        {
+            // PDFBOX-1946 when run in an applet
+            // ignore and use default
+        }
+        if (strIndent != null && strIndent.length() > 0)
+        {
+            try
+            {
+                defaultIndentThreshold = Float.parseFloat(strIndent);
+            }
+            catch (NumberFormatException nfe)
+            {
+                // ignore and use default
+            }
+        }
+        if (strDrop != null && strDrop.length() > 0)
+        {
+            try
+            {
+                defaultDropThreshold = Float.parseFloat(strDrop);
+            }
+            catch (NumberFormatException nfe)
+            {
+                // ignore and use default
+            }
+        }
+    }
 
     /**
      * The platform's line separator.
@@ -165,10 +209,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         {
             charactersByArticle.clear();
         }
-        if (characterListMapping != null)
-        {
-            characterListMapping.clear();
-        }
+        characterListMapping.clear();
     }
 
     /**
@@ -449,6 +490,15 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 TextPositionComparator comparator = new TextPositionComparator();
                 // because the TextPositionComparator is not transitive, but
                 // JDK7+ enforces transitivity on comparators, we need to use
+                // a custom mergesort implementation (which is slower, unfortunately).
+                try
+                {
+                    Collections.sort(textList, comparator);
+                }
+                catch (IllegalArgumentException e)
+                {
+                    IterativeMergeSort.sort(textList, comparator);
+                }
                 // a custom mergesort implementation (which is slower, unfortunately).
                 IterativeMergeSort.sort(textList, comparator);
             }
@@ -1841,7 +1891,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 {
                     builder = new StringBuilder(strLength * 2);
                 }
-                builder.append(word.substring(p, q));
+                builder.append(word, p, q);
                 // Some fonts map U+FDF2 differently than the Unicode spec.
                 // They add an extra U+0627 character to compensate.
                 // This removes the extra character for those fonts.
@@ -1865,7 +1915,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         }
         else
         {
-            builder.append(word.substring(p, q));
+            builder.append(word, p, q);
             return handleDirection(builder.toString());
         }
     }

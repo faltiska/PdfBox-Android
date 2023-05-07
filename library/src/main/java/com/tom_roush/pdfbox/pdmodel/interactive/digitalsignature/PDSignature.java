@@ -292,11 +292,15 @@ public class PDSignature implements COSObjectable
     /**
      * Read out the byterange from the file.
      *
-     * @return a integer array with the byterange
+     * @return an integer array with the byterange, or an empty array if there is none.
      */
     public int[] getByteRange()
     {
-        COSArray byteRange = (COSArray)dictionary.getDictionaryObject(COSName.BYTERANGE);
+        COSArray byteRange = dictionary.getCOSArray(COSName.BYTERANGE);
+        if (byteRange == null)
+        {
+            return new int[0];
+        }
         int[] ary = new int[byteRange.size()];
         for (int i = 0; i<ary.length;++i)
         {
@@ -327,6 +331,7 @@ public class PDSignature implements COSObjectable
      * @param pdfFile The signed pdf file as InputStream. It will be closed in this method.
      * @return a byte array containing the signature
      * @throws IOException if the pdfFile can't be read
+     * @throws IndexOutOfBoundsException if the byterange array is not long enough
      */
     public byte[] getContents(InputStream pdfFile) throws IOException
     {
@@ -343,6 +348,7 @@ public class PDSignature implements COSObjectable
      * @param pdfFile The signed pdf file as byte array
      * @return a byte array containing the signature
      * @throws IOException if the pdfFile can't be read
+     * @throws IndexOutOfBoundsException if the byterange array is not long enough
      */
     public byte[] getContents(byte[] pdfFile) throws IOException
     {

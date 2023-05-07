@@ -49,6 +49,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation;
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDestinationDictionary;
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary;
 import com.tom_roush.pdfbox.pdmodel.PDPage;
+import com.tom_roush.pdfbox.pdmodel.PDPageTree;
 import com.tom_roush.pdfbox.pdmodel.PDResources;
 import com.tom_roush.pdfbox.pdmodel.PDStructureElementNameTreeNode;
 import com.tom_roush.pdfbox.pdmodel.PageMode;
@@ -352,6 +353,7 @@ public class PDFMergerUtility
         {
             destination = new PDDocument(memUsageSetting);
             PDFCloneUtility cloner = new PDFCloneUtility(destination);
+            PDPageTree destinationPageTree = destination.getPages(); // cache PageTree
 
             for (Object sourceObject : sources)
             {
@@ -383,7 +385,7 @@ public class PDFMergerUtility
                         {
                             newPage.setResources(new PDResources());
                         }
-                        destination.addPage(newPage);
+                        destinationPageTree.add(newPage);
                     }
                 }
                 finally
@@ -419,7 +421,7 @@ public class PDFMergerUtility
     private void legacyMergeDocuments(MemoryUsageSetting memUsageSetting) throws IOException
     {
         PDDocument destination = null;
-        if (sources != null && sources.size() > 0)
+        if (sources.size() > 0)
         {
             // Make sure that:
             // - first Exception is kept
@@ -428,7 +430,7 @@ public class PDFMergerUtility
             // - all FileInputStreams are closed
             // - there's a way to see which errors occurred
 
-            List<PDDocument> tobeclosed = new ArrayList<PDDocument>();
+            List<PDDocument> tobeclosed = new ArrayList<PDDocument>(sources.size());
 
             try
             {
@@ -507,9 +509,7 @@ public class PDFMergerUtility
             throw new IOException("Error: destination PDF is closed.");
         }
 
-        PDDocumentCatalog destCatalog = destination.getDocumentCatalog();
         PDDocumentCatalog srcCatalog = source.getDocumentCatalog();
-
         if (isDynamicXfa(srcCatalog.getAcroForm()))
         {
             throw new IOException("Error: can't merge source document containing dynamic XFA form content.");
@@ -529,6 +529,7 @@ public class PDFMergerUtility
         }
 
         int pageIndexOpenActionDest = -1;
+        PDDocumentCatalog destCatalog = destination.getDocumentCatalog();
         if (destCatalog.getOpenAction() == null)
         {
             // PDFBOX-3972: get local dest page index, it must be reassigned after the page cloning
@@ -594,17 +595,17 @@ public class PDFMergerUtility
             }
         }
 
-        if (destNames != null)
+        if (destNames != null && destNames.getCOSObject().containsKey(COSName.ID_TREE))
         {
-            // found in 054080.pdf from PDFBOX-4417 and doesn't belong there
+            // found in 001031.pdf from PDFBOX-4417 and doesn't belong there
             destNames.getCOSObject().removeItem(COSName.ID_TREE);
             Log.w("PdfBox-Android", "Removed /IDTree from /Names dictionary, doesn't belong there");
         }
 
-        PDDocumentNameDestinationDictionary destDests = destCatalog.getDests();
         PDDocumentNameDestinationDictionary srcDests = srcCatalog.getDests();
         if (srcDests != null)
         {
+            PDDocumentNameDestinationDictionary destDests = destCatalog.getDests();
             if (destDests == null)
             {
                 destCatalog.getCOSObject().setItem(COSName.DESTS, cloner.cloneForNewDocument(srcDests));
@@ -615,10 +616,10 @@ public class PDFMergerUtility
             }
         }
 
-        PDDocumentOutline destOutline = destCatalog.getDocumentOutline();
         PDDocumentOutline srcOutline = srcCatalog.getDocumentOutline();
         if (srcOutline != null)
         {
+            PDDocumentOutline destOutline = destCatalog.getDocumentOutline();
             if (destOutline == null || destOutline.getFirstChild() == null)
             {
                 PDDocumentOutline cloned = new PDDocumentOutline((COSDictionary) cloner.cloneForNewDocument(srcOutline));
@@ -628,9 +629,14 @@ public class PDFMergerUtility
             {
                 // search last sibling for dest, because /Last entry is sometimes wrong
                 PDOutlineItem destLastOutlineItem = destOutline.getFirstChild();
-                while (destLastOutlineItem.getNextSibling() != null)
+                while (true)
                 {
-                    destLastOutlineItem = destLastOutlineItem.getNextSibling();
+                    PDOutlineItem outlineItem = destLastOutlineItem.getNextSibling();
+                    if (outlineItem == null)
+                    {
+                        break;
+                    }
+                    destLastOutlineItem = outlineItem;
                 }
                 for (PDOutlineItem item : srcOutline.children())
                 {
@@ -647,18 +653,18 @@ public class PDFMergerUtility
         }
 
         PageMode destPageMode = destCatalog.getPageMode();
-        PageMode srcPageMode = srcCatalog.getPageMode();
         if (destPageMode == null)
         {
+            PageMode srcPageMode = srcCatalog.getPageMode();
             destCatalog.setPageMode(srcPageMode);
         }
 
-        COSDictionary destLabels = destCatalog.getCOSObject().getCOSDictionary(COSName.PAGE_LABELS);
         COSDictionary srcLabels = srcCatalog.getCOSObject().getCOSDictionary(COSName.PAGE_LABELS);
         if (srcLabels != null)
         {
             int destPageCount = destination.getNumberOfPages();
             COSArray destNums;
+            COSDictionary destLabels = destCatalog.getCOSObject().getCOSDictionary(COSName.PAGE_LABELS);
             if (destLabels == null)
             {
                 destLabels = new COSDictionary();
@@ -785,6 +791,7 @@ public class PDFMergerUtility
 
         Map<COSDictionary, COSDictionary> objMapping = new HashMap<COSDictionary, COSDictionary>();
         int pageIndex = 0;
+        PDPageTree destinationPageTree = destination.getPages(); // cache PageTree
         for (PDPage page : srcCatalog.getPages())
         {
             PDPage newPage = new PDPage((COSDictionary) cloner.cloneForNewDocument(page.getCOSObject()));
@@ -824,7 +831,7 @@ public class PDFMergerUtility
                 }
                 // TODO update mapping for XObjects
             }
-            destination.addPage(newPage);
+            destinationPageTree.add(newPage);
 
             if (pageIndex == pageIndexOpenActionDest)
             {
@@ -920,9 +927,13 @@ public class PDFMergerUtility
 
     private void mergeLanguage(PDDocumentCatalog destCatalog, PDDocumentCatalog srcCatalog)
     {
-        if (destCatalog.getLanguage() == null && srcCatalog.getLanguage() != null)
+        if (destCatalog.getLanguage() == null)
         {
-            destCatalog.setLanguage(srcCatalog.getLanguage());
+            String srcLanguage = srcCatalog.getLanguage();
+            if (srcLanguage != null)
+            {
+                destCatalog.setLanguage(srcLanguage);
+            }
         }
     }
 
@@ -948,40 +959,115 @@ public class PDFMergerUtility
         PDStructureTreeRoot srcStructTree,
         PDStructureTreeRoot destStructTree) throws IOException
     {
-        // make new /K with array that has the input /K entries
-        COSArray newKArray = new COSArray();
-        if (destStructTree.getK() != null)
+        COSBase srcKEntry = srcStructTree.getK();
+        COSArray srcKArray = new COSArray();
+        COSBase clonedSrcKEntry = cloner.cloneForNewDocument(srcKEntry);
+        if (clonedSrcKEntry instanceof COSArray)
         {
-            COSBase base = destStructTree.getK();
-            if (base instanceof COSArray)
+            srcKArray.addAll((COSArray) clonedSrcKEntry);
+        }
+        else if (clonedSrcKEntry instanceof COSDictionary)
+        {
+            srcKArray.add(clonedSrcKEntry);
+        }
+
+        if (srcKArray.size() == 0)
+        {
+            return;
+        }
+
+        COSArray dstKArray = new COSArray();
+        COSBase dstKEntry = destStructTree.getK();
+        if (dstKEntry instanceof COSArray)
+        {
+            dstKArray.addAll((COSArray) dstKEntry);
+        }
+        else if (dstKEntry instanceof COSDictionary)
+        {
+            dstKArray.add(dstKEntry);
+        }
+
+        if (dstKArray.size() == 1 && dstKArray.getObject(0) instanceof COSDictionary)
+        {
+            // Only one element in the destination. If it is a /Document and its children
+            // are /Document or /Part, then we can insert there
+            COSDictionary topKDict = (COSDictionary) dstKArray.getObject(0);
+            if (COSName.DOCUMENT.equals(topKDict.getCOSName(COSName.S)))
             {
-                newKArray.addAll((COSArray) base);
-            }
-            else
-            {
-                newKArray.add(base);
+                COSArray kLevelOneArray = topKDict.getCOSArray(COSName.K);
+                if (kLevelOneArray != null)
+                {
+                    boolean onlyDocuments = hasOnlyDocumentsOrParts(kLevelOneArray);
+                    if (onlyDocuments)
+                    {
+                        // insert src elements at level 1
+                        kLevelOneArray.addAll(srcKArray);
+                        updateParentEntry(kLevelOneArray, topKDict, COSName.PART);
+                        return;
+                    }
+                }
             }
         }
-        if (srcStructTree.getK() != null)
+
+        if (dstKArray.size() == 0)
         {
-            COSBase base = cloner.cloneForNewDocument(srcStructTree.getK());
-            if (base instanceof COSArray)
+            updateParentEntry(srcKArray, destStructTree.getCOSObject(), null);
+            destStructTree.setK(srcKArray);
+            return;
+        }
+
+        // whatever this is, merge this under a new /Document element
+        dstKArray.addAll(srcKArray);
+        COSDictionary kLevelZeroDict = new COSDictionary();
+        // If it is all Document, then make it all Part
+        COSName newStructureType = hasOnlyDocumentsOrParts(dstKArray) ? COSName.PART : null;
+        updateParentEntry(dstKArray, kLevelZeroDict, newStructureType);
+        kLevelZeroDict.setItem(COSName.K, dstKArray);
+        kLevelZeroDict.setItem(COSName.P, destStructTree);
+        kLevelZeroDict.setItem(COSName.S, COSName.DOCUMENT);
+        destStructTree.setK(kLevelZeroDict);
+    }
+
+    private boolean hasOnlyDocumentsOrParts(COSArray kLevelOneArray)
+    {
+        for (int i = 0; i < kLevelOneArray.size(); ++i)
+        {
+            COSBase base = kLevelOneArray.getObject(i);
+            if (!(base instanceof COSDictionary))
             {
-                newKArray.addAll((COSArray) base);
+                return false;
             }
-            else
+            COSDictionary dict = (COSDictionary) base;
+            COSName sEntry = dict.getCOSName(COSName.S);
+            if (!COSName.DOCUMENT.equals(sEntry) && !COSName.PART.equals(sEntry))
             {
-                newKArray.add(base);
+                return false;
             }
         }
-        if (newKArray.size() > 0)
+        return true;
+    }
+
+    /**
+     * Update the P reference to the new parent dictionary.
+     *
+     * @param kArray the kids array
+     * @param newParent the new parent
+     * @param newStructureType the new structure type in /S or null so it doesn't get replaced
+     */
+    private void updateParentEntry(COSArray kArray, COSDictionary newParent, COSName newStructureType)
+    {
+        for (int i = 0; i < kArray.size(); i++)
         {
-            COSDictionary kDictLevel0 = new COSDictionary();
-            updateParentEntry(newKArray, kDictLevel0);
-            kDictLevel0.setItem(COSName.K, newKArray);
-            kDictLevel0.setItem(COSName.P, destStructTree);
-            kDictLevel0.setItem(COSName.S, COSName.DOCUMENT);
-            destStructTree.setK(kDictLevel0);
+            COSBase subEntry = kArray.getObject(i);
+            if (subEntry instanceof COSDictionary)
+            {
+                COSDictionary dictEntry = (COSDictionary) subEntry;
+                dictEntry.setItem(COSName.P, newParent);
+                if (newStructureType != null)
+                {
+                    dictEntry.setItem(COSName.S, newStructureType);
+                }
+            }
         }
     }
 
@@ -990,11 +1076,11 @@ public class PDFMergerUtility
         PDStructureTreeRoot destStructTree) throws IOException
     {
         PDNameTreeNode<PDStructureElement> srcIDTree = srcStructTree.getIDTree();
-        PDNameTreeNode<PDStructureElement> destIDTree = destStructTree.getIDTree();
         if (srcIDTree == null)
         {
             return;
         }
+        PDNameTreeNode<PDStructureElement> destIDTree = destStructTree.getIDTree();
         if (destIDTree == null)
         {
             destIDTree = new PDStructureElementNameTreeNode();
@@ -1358,7 +1444,11 @@ public class PDFMergerUtility
                 String fieldName = destField.getPartialName();
                 if (fieldName.startsWith(prefix))
                 {
-                    nextFieldNum = Math.max(nextFieldNum, Integer.parseInt(fieldName.substring(prefixLength, fieldName.length())) + 1);
+                    String suffix = fieldName.substring(prefixLength);
+                    if (suffix.matches("\\d+"))
+                    {
+                        nextFieldNum = Math.max(nextFieldNum, Integer.parseInt(suffix) + 1);
+                    }
                 }
             }
 
@@ -1514,28 +1604,6 @@ public class PDFMergerUtility
     }
 
     /**
-     * Update the P reference to the new parent dictionary.
-     *
-     * @param kArray the kids array
-     * @param newParent the new parent
-     */
-    private void updateParentEntry(COSArray kArray, COSDictionary newParent)
-    {
-        for (int i = 0; i < kArray.size(); i++)
-        {
-            COSBase subEntry = kArray.getObject(i);
-            if (subEntry instanceof COSDictionary)
-            {
-                COSDictionary dictEntry = (COSDictionary) subEntry;
-                if (dictEntry.getDictionaryObject(COSName.P) != null)
-                {
-                    dictEntry.setItem(COSName.P, newParent);
-                }
-            }
-        }
-    }
-
-    /**
      * Update the StructParents and StructParent values in a PDPage.
      *
      * @param page the new page
@@ -1543,17 +1611,19 @@ public class PDFMergerUtility
      */
     private void updateStructParentEntries(PDPage page, int structParentOffset) throws IOException
     {
-        if (page.getStructParents() >= 0)
+        int structParents = page.getStructParents();
+        if (structParents >= 0)
         {
-            page.setStructParents(page.getStructParents() + structParentOffset);
+            page.setStructParents(structParents + structParentOffset);
         }
         List<PDAnnotation> annots = page.getAnnotations();
-        List<PDAnnotation> newannots = new ArrayList<PDAnnotation>();
+        List<PDAnnotation> newannots = new ArrayList<PDAnnotation>(annots.size());
         for (PDAnnotation annot : annots)
         {
-            if (annot.getStructParent() >= 0)
+            int structParent = annot.getStructParent();
+            if (structParent >= 0)
             {
-                annot.setStructParent(annot.getStructParent() + structParentOffset);
+                annot.setStructParent(structParent + structParentOffset);
             }
             newannots.add(annot);
         }

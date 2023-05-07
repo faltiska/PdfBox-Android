@@ -27,7 +27,6 @@ import com.tom_roush.pdfbox.cos.COSArray;
 import com.tom_roush.pdfbox.cos.COSBase;
 import com.tom_roush.pdfbox.cos.COSName;
 import com.tom_roush.pdfbox.cos.COSNumber;
-import com.tom_roush.pdfbox.cos.COSObject;
 import com.tom_roush.pdfbox.cos.COSString;
 import com.tom_roush.pdfbox.pdfparser.PDFStreamParser;
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream;
@@ -35,6 +34,7 @@ import com.tom_roush.pdfbox.pdmodel.PDResources;
 import com.tom_roush.pdfbox.pdmodel.font.PDFont;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColorSpace;
+import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
@@ -74,7 +74,8 @@ class PDDefaultAppearanceString
     {
         if (defaultAppearance == null)
         {
-            throw new IllegalArgumentException("/DA is a required entry");
+            throw new IllegalArgumentException("/DA is a required entry. "
+                + "Please set a default appearance first.");
         }
 
         if (defaultResources == null)
@@ -99,11 +100,7 @@ class PDDefaultAppearanceString
         Object token = parser.parseNextToken();
         while (token != null)
         {
-            if (token instanceof COSObject)
-            {
-                arguments.add(((COSObject) token).getObject());
-            }
-            else if (token instanceof Operator)
+            if (token instanceof Operator)
             {
                 processOperator((Operator) token, arguments);
                 arguments = new ArrayList<COSBase>();
@@ -204,8 +201,7 @@ class PDDefaultAppearanceString
                 colorSpace = PDDeviceRGB.INSTANCE;
                 break;
             case 4:
-//                colorSpace = PDDeviceCMYK.INSTANCE; TODO: PdfBox-Android
-                colorSpace = PDDeviceRGB.INSTANCE;
+                colorSpace = PDDeviceCMYK.INSTANCE;
                 break;
             default:
                 throw new IOException("Missing operands for set non stroking color operator " + Arrays.toString(operands.toArray()));

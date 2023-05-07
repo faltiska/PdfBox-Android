@@ -40,8 +40,10 @@ import com.tom_roush.pdfbox.pdmodel.font.PDFont;
 import com.tom_roush.pdfbox.pdmodel.graphics.PDXObject;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColorSpace;
+import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray;
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import com.tom_roush.pdfbox.pdmodel.graphics.color.PDICCBased;
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDInlineImage;
@@ -168,7 +170,7 @@ public final class PDPageContentStream implements Closeable
      * @param appendContent Indicates whether content will be overwritten. If false all previous
      *                      content is deleted.
      * @param compress Tell if the content stream should compress the page contents.
-     * @param resetContext Tell if the graphic context should be reseted. You should use this when
+     * @param resetContext Tell if the graphic context should be reset. You should use this when
      * appending to an existing stream, because the existing stream may have changed graphic
      * properties (e.g. scaling, rotation).
      * @throws IOException If there is an error writing to the page contents.
@@ -831,11 +833,12 @@ public final class PDPageContentStream implements Closeable
         sb.append("/");
         sb.append(inlineImage.getColorSpace().getName());
 
-        if (inlineImage.getDecode() != null && inlineImage.getDecode().size() > 0)
+        COSArray decodeArray = inlineImage.getDecode();
+        if (decodeArray != null && decodeArray.size() > 0)
         {
             sb.append("\n /D ");
             sb.append("[");
-            for (COSBase base : inlineImage.getDecode())
+            for (COSBase base : decodeArray)
             {
                 sb.append(((COSNumber) base).intValue());
                 sb.append(" ");
@@ -1078,8 +1081,8 @@ public final class PDPageContentStream implements Closeable
     private COSName getName(PDColorSpace colorSpace) throws IOException
     {
         if (colorSpace instanceof PDDeviceGray ||
-            colorSpace instanceof PDDeviceRGB /*||
-            colorSpace instanceof PDDeviceCMYK TODO: PdfBox-Android*/)
+            colorSpace instanceof PDDeviceRGB ||
+            colorSpace instanceof PDDeviceCMYK)
         {
             return COSName.getPDFName(colorSpace.getName());
         }
@@ -1115,17 +1118,18 @@ public final class PDPageContentStream implements Closeable
 //            writeOperand(color.getPatternName());
 //        }
 
-//        if (color.getColorSpace() instanceof PDPattern ||
+        if (
+//            color.getColorSpace() instanceof PDPattern ||
 //            color.getColorSpace() instanceof PDSeparation ||
 //            color.getColorSpace() instanceof PDDeviceN ||
-//            color.getColorSpace() instanceof PDICCBased)
-//        {
-//            writeOperator(OperatorName.STROKING_COLOR_N);
-//        }
-//        else
-//        {
+            color.getColorSpace() instanceof PDICCBased)
+        {
+            writeOperator(OperatorName.STROKING_COLOR_N);
+        }
+        else
+        {
             writeOperator(OperatorName.STROKING_COLOR);
-//        } TODO: PdfBox-Android
+        }
     }
 
     /**
@@ -1164,16 +1168,17 @@ public final class PDPageContentStream implements Closeable
 
         PDColorSpace currentStrokingColorSpace = strokingColorSpaceStack.peek();
 
-//        if (currentStrokingColorSpace instanceof PDSeparation ||
+        if (
+//            currentStrokingColorSpace instanceof PDSeparation ||
 //            currentStrokingColorSpace instanceof PDPattern ||
-//            currentStrokingColorSpace instanceof PDICCBased)
-//        {
-//            writeOperator(OperatorName.STROKING_COLOR_N);
-//        }
-//        else
-//        {
+            currentStrokingColorSpace instanceof PDICCBased)
+        {
+            writeOperator(OperatorName.STROKING_COLOR_N);
+        }
+        else
+        {
             writeOperator(OperatorName.STROKING_COLOR);
-//        } TODO: PdfBox-Android
+        }
     }
 
     /**
@@ -1265,7 +1270,7 @@ public final class PDPageContentStream implements Closeable
         writeOperand(y);
         writeOperand(k);
         writeOperator(OperatorName.STROKING_COLOR_CMYK);
-//        setStrokingColorSpaceStack(PDDeviceCMYK.INSTANCE); TODO: PdfBox-Android
+        setStrokingColorSpaceStack(PDDeviceCMYK.INSTANCE);
     }
 
     /**
@@ -1344,17 +1349,18 @@ public final class PDPageContentStream implements Closeable
 //            writeOperand(color.getPatternName());
 //        }
 
-//        if (color.getColorSpace() instanceof PDPattern ||
+        if (
+//            color.getColorSpace() instanceof PDPattern ||
 //            color.getColorSpace() instanceof PDSeparation ||
 //            color.getColorSpace() instanceof PDDeviceN ||
-//            color.getColorSpace() instanceof PDICCBased)
-//        {
-//            writeOperator(OperatorName.NON_STROKING_COLOR_N);
-//        }
-//        else
-//        {
+            color.getColorSpace() instanceof PDICCBased)
+        {
+            writeOperator(OperatorName.NON_STROKING_COLOR_N);
+        }
+        else
+        {
             writeOperator(OperatorName.NON_STROKING_COLOR);
-//        } TODO: PdfBox-Android
+        }
     }
 
     /**
@@ -1393,20 +1399,21 @@ public final class PDPageContentStream implements Closeable
 
         PDColorSpace currentNonStrokingColorSpace = nonStrokingColorSpaceStack.peek();
 
-//        if (currentNonStrokingColorSpace instanceof PDSeparation ||
+        if (
+//            currentNonStrokingColorSpace instanceof PDSeparation ||
 //            currentNonStrokingColorSpace instanceof PDPattern ||
-//            currentNonStrokingColorSpace instanceof PDICCBased)
-//        {
-//            writeOperator(OperatorName.NON_STROKING_COLOR_N);
-//        }
-//        else
-//        {
+            currentNonStrokingColorSpace instanceof PDICCBased)
+        {
+            writeOperator(OperatorName.NON_STROKING_COLOR_N);
+        }
+        else
+        {
             writeOperator(OperatorName.NON_STROKING_COLOR);
-//        } TODO: PdfBox-Android
+        }
     }
 
     /**
-     * Set the non-stroking color in the DeviceRGB color space. Range is 0..255.
+     * Set the non-stroking color in the DeviceRGB color space. Range is 0..1.
      *
      * @param r The red value.
      * @param g The green value.
@@ -1508,7 +1515,7 @@ public final class PDPageContentStream implements Closeable
         writeOperand(y);
         writeOperand(k);
         writeOperator(OperatorName.NON_STROKING_CMYK);
-//        setNonStrokingColorSpaceStack(PDDeviceCMYK.INSTANCE); TODO: PdfBox-Android
+        setNonStrokingColorSpaceStack(PDDeviceCMYK.INSTANCE);
     }
 
     /**
@@ -2159,14 +2166,9 @@ public final class PDPageContentStream implements Closeable
      *
      * @param lineWidth The width which is used for drawing.
      * @throws IOException If the content stream could not be written
-     * @throws IllegalStateException If the method was called within a text block.
      */
     public void setLineWidth(float lineWidth) throws IOException
     {
-        if (inTextMode)
-        {
-            throw new IllegalStateException("Error: setLineWidth is not allowed within a text block.");
-        }
         writeOperand(lineWidth);
         writeOperator(OperatorName.SET_LINE_WIDTH);
     }
@@ -2176,15 +2178,10 @@ public final class PDPageContentStream implements Closeable
      *
      * @param lineJoinStyle 0 for miter join, 1 for round join, and 2 for bevel join.
      * @throws IOException If the content stream could not be written.
-     * @throws IllegalStateException If the method was called within a text block.
      * @throws IllegalArgumentException If the parameter is not a valid line join style.
      */
     public void setLineJoinStyle(int lineJoinStyle) throws IOException
     {
-        if (inTextMode)
-        {
-            throw new IllegalStateException("Error: setLineJoinStyle is not allowed within a text block.");
-        }
         if (lineJoinStyle >= 0 && lineJoinStyle <= 2)
         {
             writeOperand(lineJoinStyle);
@@ -2201,15 +2198,10 @@ public final class PDPageContentStream implements Closeable
      *
      * @param lineCapStyle 0 for butt cap, 1 for round cap, and 2 for projecting square cap.
      * @throws IOException If the content stream could not be written.
-     * @throws IllegalStateException If the method was called within a text block.
      * @throws IllegalArgumentException If the parameter is not a valid line cap style.
      */
     public void setLineCapStyle(int lineCapStyle) throws IOException
     {
-        if (inTextMode)
-        {
-            throw new IllegalStateException("Error: setLineCapStyle is not allowed within a text block.");
-        }
         if (lineCapStyle >= 0 && lineCapStyle <= 2)
         {
             writeOperand(lineCapStyle);
@@ -2227,14 +2219,9 @@ public final class PDPageContentStream implements Closeable
      * @param pattern The pattern array
      * @param phase The phase of the pattern
      * @throws IOException If the content stream could not be written.
-     * @throws IllegalStateException If the method was called within a text block.
      */
     public void setLineDashPattern(float[] pattern, float phase) throws IOException
     {
-        if (inTextMode)
-        {
-            throw new IllegalStateException("Error: setLineDashPattern is not allowed within a text block.");
-        }
         write("[");
         for (float value : pattern)
         {
@@ -2250,13 +2237,10 @@ public final class PDPageContentStream implements Closeable
      *
      * @param miterLimit the new miter limit.
      * @throws IOException If the content stream could not be written.
+     * @throws IllegalArgumentException If the parameter is \u2264 0.
      */
     public void setMiterLimit(float miterLimit) throws IOException
     {
-        if (inTextMode)
-        {
-            throw new IllegalStateException("Error: setMiterLimit is not allowed within a text block.");
-        }
         if (miterLimit <= 0.0)
         {
             throw new IllegalArgumentException("A miter limit <= 0 is invalid and will not render in Acrobat Reader");
