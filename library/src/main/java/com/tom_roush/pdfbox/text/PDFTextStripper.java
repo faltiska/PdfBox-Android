@@ -123,6 +123,9 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     protected PDDocument document;
     protected Writer output;
 
+    protected boolean startParagraphIfIndented = true;
+    protected boolean startParagraphIfOutdented = true;
+
     /**
      * True if we started a paragraph but haven't ended it yet.
      */
@@ -144,7 +147,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * <p>IMPORTANT: By default, text extraction is done in the same sequence as the text in the PDF page content stream.
      * PDF is a graphic format, not a text format, and unlike HTML, it has no requirements that text one on page
      * be rendered in a certain order. The order is the one that was determined by the software that created the
-     * PDF. To get text sorted from left to right and top to botton, use {@link #setSortByPosition(boolean)}.
+     * PDF. To get text sorted from left to right and top to bottom, use {@link #setSortByPosition(boolean)}.
      *
      * @param doc The document to get the text from.
      * @return The text of the PDF document.
@@ -434,7 +437,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
         boolean startOfPage = true; // flag to indicate start of page
         boolean startOfArticle;
-        if (charactersByArticle.size() > 0)
+        if (!charactersByArticle.isEmpty())
         {
             writePageStart();
         }
@@ -632,7 +635,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 previousAveCharWidth = averageCharWidth;
             }
             // print the final line
-            if (line.size() > 0)
+            if (!line.isEmpty())
             {
                 writeLine(normalize(line));
                 writeParagraphEnd();
@@ -1352,7 +1355,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         float maxHeightForLine) throws IOException
     {
         current.setLineStart();
-        isParagraphSeparation(current, lastPosition, lastLineStartPosition, maxHeightForLine);
+        checkParagraphSeparation(current, lastPosition, lastLineStartPosition, maxHeightForLine);
         lastLineStartPosition = current;
         if (current.isParagraphStart())
         {
@@ -1399,8 +1402,8 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * @param lastLineStartPosition the last text position that followed a line separator, or null.
      * @param maxHeightForLine max height for text positions since lasLineStartPosition.
      */
-    private void isParagraphSeparation(PositionWrapper position, PositionWrapper lastPosition,
-        PositionWrapper lastLineStartPosition, float maxHeightForLine)
+    private void checkParagraphSeparation(PositionWrapper position, PositionWrapper lastPosition,
+                                          PositionWrapper lastLineStartPosition, float maxHeightForLine)
     {
         boolean result = false;
         if (lastLineStartPosition == null)
@@ -1409,21 +1412,18 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         }
         else
         {
-            float yGap = Math.abs(position.getTextPosition().getYDirAdj()
-                - lastPosition.getTextPosition().getYDirAdj());
+            float yGap = Math.abs(position.getTextPosition().getYDirAdj() - lastPosition.getTextPosition().getYDirAdj());
             float newYVal = multiplyFloat(getDropThreshold(), maxHeightForLine);
             // do we need to flip this for rtl?
-            float xGap = position.getTextPosition().getXDirAdj()
-                - lastLineStartPosition.getTextPosition().getXDirAdj();
-            float newXVal = multiplyFloat(getIndentThreshold(),
-                position.getTextPosition().getWidthOfSpace());
+            float xGap = position.getTextPosition().getXDirAdj() - lastLineStartPosition.getTextPosition().getXDirAdj();
+            float indentationWidth = multiplyFloat(getIndentThreshold(), position.getTextPosition().getWidthOfSpace());
             float positionWidth = multiplyFloat(0.25f, position.getTextPosition().getWidth());
 
             if (yGap > newYVal)
             {
                 result = true;
             }
-            else if (xGap > newXVal)
+            else if (startParagraphIfIndented && xGap > indentationWidth)
             {
                 // text is indented, but try to screen for hanging indent
                 if (!lastLineStartPosition.isParagraphStart())
@@ -1433,6 +1433,14 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 else
                 {
                     position.setHangingIndent();
+                }
+            }
+            else if (startParagraphIfOutdented && xGap < -indentationWidth)
+            {
+                // text is left of previous line. Was it a hanging indent?
+                if (!lastLineStartPosition.isParagraphStart())
+                {
+                    result = true;
                 }
             }
             else if (Math.abs(xGap) < positionWidth)
