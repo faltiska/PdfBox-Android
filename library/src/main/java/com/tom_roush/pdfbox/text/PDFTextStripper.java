@@ -16,6 +16,7 @@
  */
 package com.tom_roush.pdfbox.text;
 
+import android.graphics.Region;
 import android.util.Log;
 
 import java.io.BufferedInputStream;
@@ -45,6 +46,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument;
 import com.tom_roush.pdfbox.pdmodel.PDPage;
 import com.tom_roush.pdfbox.pdmodel.PDPageTree;
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle;
+import com.tom_roush.pdfbox.pdmodel.graphics.state.PDGraphicsState;
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem;
 import com.tom_roush.pdfbox.pdmodel.interactive.pagenavigation.PDThreadBead;
 import com.tom_roush.pdfbox.util.IterativeMergeSort;
@@ -67,7 +69,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     /**
      * The platform's line separator.
      */
-    protected final String LINE_SEPARATOR = System.getProperty("line.separator");
+    protected final String LINE_SEPARATOR = System.lineSeparator();
 
     private String lineSeparator = LINE_SEPARATOR;
     private String wordSeparator = " ";
@@ -435,6 +437,9 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         PositionWrapper lastPosition = null;
         PositionWrapper lastLineStartPosition = null;
 
+        PDGraphicsState gs = getGraphicsState();
+        Region clippingRegion = gs.getCurrentClippingPath();
+
         boolean startOfPage = true; // flag to indicate start of page
         boolean startOfArticle;
         if (!charactersByArticle.isEmpty())
@@ -461,6 +466,26 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
             List<LineItem> line = new ArrayList<LineItem>();
 
             Iterator<TextPosition> textIter = textList.iterator();
+
+            float articleStartX = Float.MAX_VALUE;
+            float articleEndX = -Float.MAX_VALUE;
+            while (textIter.hasNext())
+            {
+                TextPosition position = textIter.next();
+                if (isVisible(position, clippingRegion)) {
+                    float positionStartX = position.getXDirAdj();
+                    if (positionStartX < articleStartX) {
+                        articleStartX = positionStartX;
+                    }
+
+                    float positionWidth = position.getWidthDirAdj();
+                    float positionEndX = positionStartX + positionWidth;
+                    if (positionEndX > articleEndX) {
+                        articleEndX = positionEndX;
+                    }
+                }
+            }
+
             // PDF files don't always store spaces. We will need to guess where we should add
             // spaces based on the distances between TextPositions. Historically, this was done
             // based on the size of the space character provided by the font. In general, this
@@ -471,42 +496,28 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
 
             // Keeps track of the previous average character width
             float previousAveCharWidth = -1;
+            textIter = textList.iterator();
             while (textIter.hasNext())
             {
                 TextPosition position = textIter.next();
+                if (!isVisible(position, clippingRegion)) {
+                    continue;
+                }
+
                 PositionWrapper current = new PositionWrapper(position);
-                String characterValue = position.getUnicode();
 
                 // Resets the average character width when we see a change in font
                 // or a change in the font size
-                if (lastPosition != null && (position.getFont() != lastPosition.getTextPosition()
-                    .getFont()
+                if (lastPosition != null && (position.getFont() != lastPosition.getTextPosition().getFont()
                     || position.getFontSize() != lastPosition.getTextPosition().getFontSize()))
                 {
                     previousAveCharWidth = -1;
                 }
 
-                float positionX;
-                float positionY;
-                float positionWidth;
-                float positionHeight;
-
-                // If we are sorting, then we need to use the text direction
-                // adjusted coordinates, because they were used in the sorting.
-                if (getSortByPosition())
-                {
-                    positionX = position.getXDirAdj();
-                    positionY = position.getYDirAdj();
-                    positionWidth = position.getWidthDirAdj();
-                    positionHeight = position.getHeightDir();
-                }
-                else
-                {
-                    positionX = position.getX();
-                    positionY = position.getY();
-                    positionWidth = position.getWidth();
-                    positionHeight = position.getHeight();
-                }
+                float positionX = position.getXDirAdj();
+                float positionY = position.getYDirAdj();
+                float positionWidth = position.getWidthDirAdj();
+                float positionHeight = position.getHeightDir();
 
                 // The current amount of characters in a word
                 int wordCharCount = position.getIndividualWidths().length;
@@ -535,15 +546,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 // with some margin. This calculation does not make a true average (average of
                 // averages) but we found that it gave the best results after numerous experiments.
                 // Based on experiments we also found that .3 worked well.
-                float averageCharWidth;
-                if (previousAveCharWidth < 0)
-                {
-                    averageCharWidth = positionWidth / wordCharCount;
-                }
-                else
-                {
-                    averageCharWidth = (previousAveCharWidth + positionWidth / wordCharCount) / 2f;
-                }
+                float averageCharWidth = calcAverageCharWidth(previousAveCharWidth, positionWidth, wordCharCount);
                 float deltaCharWidth = averageCharWidth * getAverageCharTolerance();
 
                 // Compares the values obtained by the average method and the wordSpacing method
@@ -575,8 +578,11 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                     {
                         writeLine(normalize(line));
                         line.clear();
-                        lastLineStartPosition = handleLineSeparation(current, lastPosition,
-                            lastLineStartPosition, maxHeightForLine);
+                        current.setLineStart();
+                        checkParagraphSeparation(current, lastPosition, lastLineStartPosition, maxHeightForLine, articleStartX, articleEndX);
+                        handleLineSeparation(current, lastPosition, lastLineStartPosition, maxHeightForLine);
+                        lastLineStartPosition = current;
+
                         expectedStartOfNextWordX = EXPECTED_START_OF_NEXT_WORD_X_RESET_VALUE;
                         maxYForLine = MAX_Y_FOR_LINE_RESET_VALUE;
                         maxHeightForLine = MAX_HEIGHT_FOR_LINE_RESET_VALUE;
@@ -612,37 +618,66 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 // end position of the text. We use it in computing our metrics below.
                 endOfLastTextX = positionX + positionWidth;
 
-                // add it to the list
+                String characterValue = position.getUnicode();
                 if (characterValue != null)
                 {
-                    if (startOfPage)
-                    {
-                        writeParagraphStart();// not sure this is correct for RTL?
-                    }
                     line.add(new LineItem(position));
                 }
                 maxHeightForLine = Math.max(maxHeightForLine, positionHeight);
                 minYTopForLine = Math.min(minYTopForLine, positionY - positionHeight);
-                lastPosition = current;
+
                 if (startOfPage)
                 {
-                    lastPosition.setParagraphStart();
-                    lastPosition.setLineStart();
-                    lastLineStartPosition = lastPosition;
+                    float xGap = current.getTextPosition().getXDirAdj() - articleStartX;
+                    float indentationWidth = multiplyFloat(getIndentThreshold(), current.getTextPosition().getWidthOfSpace());
+                    if (startParagraphIfIndented && xGap > indentationWidth)
+                    {
+                        current.setParagraphStart();
+                        writeParagraphStart();
+                    }
+                    current.setLineStart();
+                    lastLineStartPosition = current;
                     startOfPage = false;
                 }
+
+                lastPosition = current;
                 lastWordSpacing = wordSpacing;
                 previousAveCharWidth = averageCharWidth;
             }
-            // print the final line
+
             if (!line.isEmpty())
             {
                 writeLine(normalize(line));
-                writeParagraphEnd();
+                if (lastPosition.isParagraphStart()) {
+                    writeParagraphEnd();
+                }
             }
             endArticle();
         }
         writePageEnd();
+    }
+
+    private static float calcAverageCharWidth(float previousAveCharWidth, float positionWidth, int wordCharCount) {
+        float averageCharWidth;
+        if (previousAveCharWidth < 0)
+        {
+            averageCharWidth = positionWidth / wordCharCount;
+        }
+        else
+        {
+            averageCharWidth = (previousAveCharWidth + positionWidth / wordCharCount) / 2f;
+        }
+        return averageCharWidth;
+    }
+
+    private boolean isVisible(TextPosition position, Region clippingRegion) {
+        int positionX = (int) position.getXDirAdj();
+        int positionY = (int) position.getYDirAdj();
+        int positionWidth = (int) position.getWidthDirAdj();
+        int positionHeight = (int) position.getHeightDir();
+
+        return clippingRegion.contains(positionX, positionY - positionHeight) &&
+                clippingRegion.contains(positionX + positionWidth, positionY);
     }
 
     private boolean overlap(float y1, float height1, float y2, float height2)
@@ -1011,7 +1046,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
     }
 
     /**
-     * By default the text stripper will attempt to remove text that overlapps each other. Word paints the same
+     * By default the text stripper will attempt to remove text that overlaps each other. Word paints the same
      * character several times in order to make it look bold. By setting this to false all text will be extracted, which
      * means that certain sections will be duplicated, but better performance will be noticed.
      *
@@ -1347,16 +1382,13 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * @param lastPosition the previous text position
      * @param lastLineStartPosition the last text position that followed a line separator.
      * @param maxHeightForLine max height for positions since lastLineStartPosition
-     * @return start position of the last line
+
      * @throws IOException if something went wrong
      */
-    private PositionWrapper handleLineSeparation(PositionWrapper current,
+    private void handleLineSeparation(PositionWrapper current,
         PositionWrapper lastPosition, PositionWrapper lastLineStartPosition,
         float maxHeightForLine) throws IOException
     {
-        current.setLineStart();
-        checkParagraphSeparation(current, lastPosition, lastLineStartPosition, maxHeightForLine);
-        lastLineStartPosition = current;
         if (current.isParagraphStart())
         {
             if (lastPosition.isArticleStart())
@@ -1377,7 +1409,6 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
         {
             writeLineSeparator();
         }
-        return lastLineStartPosition;
     }
 
     /**
@@ -1396,39 +1427,41 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
      * This method sets the isParagraphStart and isHangingIndent flags on the current position object.
      * </p>
      *
-     * @param position the current text position. This may have its isParagraphStart or isHangingIndent flags set upon
-     * return.
-     * @param lastPosition the previous text position (should not be null).
+     * @param position              the current text position. This may have its isParagraphStart or isHangingIndent flags set upon
+     *                              return.
+     * @param lastPosition          the previous text position (should not be null).
      * @param lastLineStartPosition the last text position that followed a line separator, or null.
-     * @param maxHeightForLine max height for text positions since lasLineStartPosition.
+     * @param maxHeightForLine      max height for text positions since lasLineStartPosition.
+     * @param articleStartX         the leftmost X coordinate for text in current article
+     * @param articleEndX           the rightmost X coordinate for text in current article
      */
     private void checkParagraphSeparation(PositionWrapper position, PositionWrapper lastPosition,
-                                          PositionWrapper lastLineStartPosition, float maxHeightForLine)
+                                          PositionWrapper lastLineStartPosition, float maxHeightForLine,
+                                          float articleStartX, float articleEndX)
     {
-        boolean result = false;
         if (lastLineStartPosition == null)
         {
-            result = true;
+            position.setParagraphStart();
         }
         else
         {
             float yGap = Math.abs(position.getTextPosition().getYDirAdj() - lastPosition.getTextPosition().getYDirAdj());
-            float newYVal = multiplyFloat(getDropThreshold(), maxHeightForLine);
+            float spaceBetweenParagraphs = multiplyFloat(getDropThreshold(), maxHeightForLine);
             // do we need to flip this for rtl?
             float xGap = position.getTextPosition().getXDirAdj() - lastLineStartPosition.getTextPosition().getXDirAdj();
             float indentationWidth = multiplyFloat(getIndentThreshold(), position.getTextPosition().getWidthOfSpace());
             float positionWidth = multiplyFloat(0.25f, position.getTextPosition().getWidth());
 
-            if (yGap > newYVal)
+            if (yGap > spaceBetweenParagraphs)
             {
-                result = true;
+                position.setParagraphStart();
             }
             else if (startParagraphIfIndented && xGap > indentationWidth)
             {
                 // text is indented, but try to screen for hanging indent
                 if (!lastLineStartPosition.isParagraphStart())
                 {
-                    result = true;
+                    position.setParagraphStart();
                 }
                 else
                 {
@@ -1440,13 +1473,13 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 // text is left of previous line. Was it a hanging indent?
                 if (!lastLineStartPosition.isParagraphStart())
                 {
-                    result = true;
+                    position.setParagraphStart();
                 }
             }
             else if (Math.abs(xGap) < positionWidth)
             {
                 // current horizontal position is within 1/4 a char of the last
-                // linestart. We'll treat them as lined up.
+                // line start. We'll treat them as lined up.
                 if (lastLineStartPosition.isHangingIndent())
                 {
                     position.setHangingIndent();
@@ -1461,15 +1494,11 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                         Pattern currentPattern = matchListItemPattern(position);
                         if (liPattern == currentPattern)
                         {
-                            result = true;
+                            position.setParagraphStart();
                         }
                     }
                 }
             }
-        }
-        if (result)
-        {
-            position.setParagraphStart();
         }
     }
 
@@ -1889,7 +1918,7 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                 if (c == 0xFDF2 && q > 0
                     && (word.charAt(q - 1) == 0x0627 || word.charAt(q - 1) == 0xFE8D))
                 {
-                    builder.append("\u0644\u0644\u0647");
+                    builder.append("لله");
                 }
                 else
                 {
