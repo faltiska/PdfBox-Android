@@ -1435,6 +1435,14 @@ public class PDFTextStripper extends LegacyPDFStreamEngine
                     position.setHangingIndent();
                 }
             }
+            else if (xGap < -position.getTextPosition().getWidthOfSpace())
+            {
+                // text is left of previous line. Was it a hanging indent?
+                if (!lastLineStartPosition.isParagraphStart())
+                {
+                    result = true;
+                }
+            }
             else if (Math.abs(xGap) < positionWidth)
             {
                 // current horizontal position is within 1/4 a char of the last
