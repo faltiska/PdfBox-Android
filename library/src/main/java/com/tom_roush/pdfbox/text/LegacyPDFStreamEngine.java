@@ -75,7 +75,7 @@ import com.tom_roush.pdfbox.util.Vector;
  * DO NOT USE THIS CODE UNLESS YOU ARE WORKING WITH PDFTextStripper.
  * THIS CODE IS DELIBERATELY INCORRECT, USE PDFStreamEngine INSTEAD.
  */
-class LegacyPDFStreamEngine extends PDFStreamEngine
+public class LegacyPDFStreamEngine extends PDFStreamEngine
 {
     private int pageRotation;
     private PDRectangle pageSize;
@@ -111,7 +111,7 @@ class LegacyPDFStreamEngine extends PDFStreamEngine
     /**
      * Constructor.
      */
-    LegacyPDFStreamEngine() throws IOException
+    public LegacyPDFStreamEngine() throws IOException
     {
         addOperator(new BeginText());
         addOperator(new Concatenate());
